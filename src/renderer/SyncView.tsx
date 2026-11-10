@@ -21,6 +21,9 @@ interface Props {
 
 type Diffs = Record<string, CategoryDiff[] | { error: string }>;
 
+/** Diff panel tab that lists every account one after another. */
+const ALL = '__all__';
+
 function pickDefaultSource(accounts: Account[]): string {
   return (accounts.find((a) => a.changes.length > 0) ?? accounts[0]).id;
 }
@@ -55,7 +58,7 @@ export function SyncView({ state, version, onChanged }: Props) {
   useEffect(() => {
     if (!byId.has(source)) setSource(pickDefaultSource(accounts));
     setTargets((t) => new Set([...t].filter((id) => byId.has(id) && id !== source && byId.get(id)!.cloud !== 'on')));
-    if (focus && (!byId.has(focus) || focus === source)) setFocus(null);
+    if (focus && focus !== ALL && (!byId.has(focus) || focus === source)) setFocus(null);
   }, [byId, accounts, source, focus]);
 
   // Load what a push from the source would change, for every other account.
@@ -81,8 +84,31 @@ export function SyncView({ state, version, onChanged }: Props) {
   }, [source, accounts, version]);
 
   const others = accounts.filter((a) => a.id !== source);
-  const focused = focus ?? [...targets][0] ?? others[0]?.id ?? null;
   const selectedCats = CATEGORY_IDS.filter((c) => cats.has(c));
+
+  // Diff tabs: the selected targets, or every other account as a preview when none is picked.
+  // A clicked row that isn't a target gets its own tab too.
+  const tabIds = (() => {
+    const picked = others.filter((a) => targets.has(a.id)).map((a) => a.id);
+    const ids = picked.length ? picked : others.map((a) => a.id);
+    if (focus && focus !== ALL && focus !== source && byId.has(focus) && !ids.includes(focus)) ids.push(focus);
+    return ids;
+  })();
+  const activeTab =
+    focus === ALL && tabIds.length > 1 ? ALL : focus && tabIds.includes(focus) ? focus : (tabIds[0] ?? null);
+
+  /** Short summary of what a push would change on one account, for its tab. */
+  const summarize = (id: string): { text: string; same: boolean } => {
+    const d = diffs[id];
+    if (!d) return { text: '…', same: false };
+    if ('error' in d) return { text: 'error', same: false };
+    const changed = d.filter((x) => cats.has(x.category) && x.changed);
+    if (changed.length === 0) return { text: 'same', same: true };
+    const keys = changed.reduce((n, x) => n + keyCount(x), 0);
+    const newFiles = changed.reduce((n, x) => n + x.files.filter((f) => f.status === 'added').length, 0);
+    const text = keys > 0 ? `${keys} key${keys === 1 ? '' : 's'}` : `${newFiles} new file${newFiles === 1 ? '' : 's'}`;
+    return { text, same: false };
+  };
   const changedAccounts = accounts.filter((a) => a.changes.length > 0);
 
   const diffFor = (id: string, cat: CategoryId): CategoryDiff | undefined => {
@@ -106,13 +132,16 @@ export function SyncView({ state, version, onChanged }: Props) {
           ? 'The targets already match the source.'
           : null;
 
-  const toggleTarget = (id: string) =>
+  const toggleTarget = (id: string) => {
+    const adding = !targets.has(id);
     setTargets((t) => {
       const n = new Set(t);
-      if (n.has(id)) n.delete(id);
-      else n.add(id);
+      if (adding) n.add(id);
+      else n.delete(id);
       return n;
     });
+    if (adding) setFocus(id); // show the account you just picked
+  };
 
   const toggleCat = (id: CategoryId) =>
     setCats((c) => {
@@ -137,7 +166,6 @@ export function SyncView({ state, version, onChanged }: Props) {
     }
   };
 
-  const focusedDiff = focused ? diffs[focused] : undefined;
   const sourceName = byId.get(source)?.name ?? source;
 
   return (
@@ -212,7 +240,7 @@ export function SyncView({ state, version, onChanged }: Props) {
                 return (
                   <tr
                     key={a.id}
-                    className={[isSource ? 'is-source' : '', !isSource && focused === a.id ? 'is-focus' : ''].join(' ')}
+                    className={[isSource ? 'is-source' : '', !isSource && activeTab === a.id ? 'is-focus' : ''].join(' ')}
                     onClick={() => !isSource && setFocus(a.id)}
                   >
                     <td className="col-role">
@@ -269,36 +297,59 @@ export function SyncView({ state, version, onChanged }: Props) {
         <p className="muted small">Cells show what a push from {sourceName} would change. Click a row to see it key by key.</p>
       </section>
 
-      {focused && (
+      {activeTab && (
         <section className="card">
-          <h2>
-            {sourceName} → {byId.get(focused)?.name}
-          </h2>
-          {!focusedDiff ? (
-            <p className="muted">Comparing…</p>
-          ) : 'error' in focusedDiff ? (
-            <p className="error">{focusedDiff.error}</p>
-          ) : selectedCats.length === 0 ? (
-            <p className="muted">Pick a category to compare.</p>
+          <div className="diff-head">
+            <h2>What a push from {sourceName} changes</h2>
+            {tabIds.length > 1 && (
+              <span className="muted small">
+                {activeTab === ALL ? `Showing all ${tabIds.length} accounts` : `Showing 1 of ${tabIds.length} accounts`}
+              </span>
+            )}
+          </div>
+          <div className="target-tabs" role="tablist">
+            {tabIds.map((id) => {
+              const s = summarize(id);
+              const notTarget = targets.size > 0 && !targets.has(id);
+              return (
+                <button
+                  key={id}
+                  role="tab"
+                  aria-selected={activeTab === id}
+                  className={`target-tab ${activeTab === id ? 'active' : ''}`}
+                  onClick={() => setFocus(id)}
+                >
+                  <span className="tab-name">{byId.get(id)?.name ?? id}</span>
+                  <span className={s.same ? 'cell-same' : 'cell-diff'}>{s.text}</span>
+                  {notTarget && <span className="muted small">not a target</span>}
+                </button>
+              );
+            })}
+            {tabIds.length > 1 && (
+              <button
+                role="tab"
+                aria-selected={activeTab === ALL}
+                className={`target-tab ${activeTab === ALL ? 'active' : ''}`}
+                onClick={() => setFocus(ALL)}
+              >
+                <span className="tab-name">All</span>
+              </button>
+            )}
+          </div>
+          {targets.size === 0 && (
+            <p className="muted small">Preview only. Tick Target on the accounts you want to push to.</p>
+          )}
+          {activeTab === ALL ? (
+            tabIds.map((id) => (
+              <div key={id} className="all-target">
+                <h3 className="target-title">
+                  {byId.get(id)?.name ?? id} <span className="muted small">{summarize(id).text}</span>
+                </h3>
+                <TargetDiff diff={diffs[id]} cats={cats} targetName={byId.get(id)?.name ?? 'Target'} />
+              </div>
+            ))
           ) : (
-            focusedDiff
-              .filter((d) => cats.has(d.category))
-              .map((d) => (
-                <div key={d.category} className="cat-diff">
-                  <h3>
-                    {categoryLabel(d.category)}{' '}
-                    <span className="muted small">{d.changed ? (keyCount(d) === 1 ? '1 key differs' : `${keyCount(d)} keys differ`) : 'already the same'}</span>
-                  </h3>
-                  {d.changed || d.files.some((f) => f.status === 'targetOnly') ? (
-                    <DiffTable
-                      files={d.files}
-                      beforeLabel={`${byId.get(focused)?.name ?? 'Target'} now`}
-                      afterLabel="After push"
-                      mode="push"
-                    />
-                  ) : null}
-                </div>
-              ))
+            <TargetDiff diff={diffs[activeTab]} cats={cats} targetName={byId.get(activeTab)?.name ?? 'Target'} />
           )}
         </section>
       )}
@@ -352,6 +403,39 @@ export function SyncView({ state, version, onChanged }: Props) {
         </Confirm>
       )}
     </div>
+  );
+}
+
+/** One account's push diff, category by category. */
+function TargetDiff({
+  diff,
+  cats,
+  targetName,
+}: {
+  diff: Diffs[string] | undefined;
+  cats: Set<CategoryId>;
+  targetName: string;
+}) {
+  if (!diff) return <p className="muted">Comparing…</p>;
+  if ('error' in diff) return <p className="error">{diff.error}</p>;
+  const shown = diff.filter((d) => cats.has(d.category));
+  if (shown.length === 0) return <p className="muted">Pick a category to compare.</p>;
+  return (
+    <>
+      {shown.map((d) => (
+        <div key={d.category} className="cat-diff">
+          <h3>
+            {categoryLabel(d.category)}{' '}
+            <span className="muted small">
+              {d.changed ? (keyCount(d) === 1 ? '1 key differs' : `${keyCount(d)} keys differ`) : 'already the same'}
+            </span>
+          </h3>
+          {d.changed || d.files.some((f) => f.status === 'targetOnly') ? (
+            <DiffTable files={d.files} beforeLabel={`${targetName} now`} afterLabel="After push" mode="push" />
+          ) : null}
+        </div>
+      ))}
+    </>
   );
 }
 

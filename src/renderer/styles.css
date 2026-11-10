@@ -340,6 +340,48 @@ table {
   padding-left: 18px;
 }
 
+/* Diff panel tabs */
+.diff-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.diff-head .small {
+  margin-left: auto;
+}
+.target-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
+}
+.target-tab {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  background: none;
+  border-color: transparent;
+}
+.target-tab .tab-name {
+  font-weight: 600;
+}
+.target-tab.active {
+  background: var(--panel-2);
+  border-color: var(--border);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+.all-target + .all-target {
+  margin-top: 20px;
+}
+h3.target-title {
+  font-size: 15px;
+  margin: 0 0 4px;
+  padding-left: 8px;
+  border-left: 3px solid var(--accent);
+}
+
 /* Diffs */
 .cat-diff h3 {
   border-top: 1px solid var(--border);
