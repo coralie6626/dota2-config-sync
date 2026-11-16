@@ -534,3 +534,70 @@ td.key .branch::after {
   gap: 8px;
   margin-top: 16px;
 }
+
+/* Guides */
+.tab-page {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.tab-page[hidden] {
+  display: none;
+}
+.tab-page > .sync {
+  flex: 1;
+}
+.card a {
+  color: var(--accent-2);
+}
+.tool-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.tool-status > :first-child {
+  flex: 1;
+}
+.copyable {
+  user-select: all;
+}
+.guide-accounts {
+  list-style: none;
+  margin: 8px 0 12px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 8px;
+}
+.guide-accounts li {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.guide-accounts label,
+.option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.guide-accounts .account-name {
+  display: inline;
+}
+.progress {
+  height: 8px;
+  margin: 8px 0;
+  background: var(--panel-2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s;
+}

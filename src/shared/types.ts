@@ -112,7 +112,7 @@ export interface BackupInfo {
   accountId: string;
   accountName: string;
   createdAt: string;
-  reason: 'push' | 'restore';
+  reason: 'push' | 'restore' | 'import';
   sourceAccountId: string | null;
   categories: CategoryId[];
   /** Files that existed before the write (and are in the zip). */
@@ -136,6 +136,8 @@ export interface AccountResult {
   error?: string;
   backupId?: string;
   filesWritten: number;
+  /** Guide import: older D2PT guides removed for the same heroes. */
+  filesRemoved?: number;
   rolledBack?: boolean;
 }
 
@@ -146,11 +148,51 @@ export interface WriteResult {
   results: AccountResult[];
 }
 
+/** Whether the d2pt-guides Python tool can run. */
+export interface GuideToolStatus {
+  ok: boolean;
+  /** Python version found, if any. */
+  python: string | null;
+  /** d2pt-guides version, when installed. */
+  toolVersion: string | null;
+  /** Command that installs the tool. */
+  installHint: string;
+  error?: string;
+}
+
+export interface GuideProgress {
+  phase: 'generating' | 'installing';
+  /** Heroes processed so far, out of total. */
+  done: number;
+  total: number;
+  /** The hero being processed. */
+  label: string;
+  /** Guide files written so far. */
+  generated: number;
+}
+
+export interface GuideImportOptions {
+  /** Remove older D2PT guides for the heroes being imported. Other guides are never touched. */
+  replace: boolean;
+}
+
+export interface GuideImportResult extends WriteResult {
+  /** Guides generated (0 when it stopped before generating). */
+  generated: number;
+  heroes: number;
+}
+
 export interface Api {
   listAccounts(): Promise<AppState>;
   getDiff(sourceId: string, targetId: string, categories: CategoryId[]): Promise<CategoryDiff[]>;
   push(sourceId: string, targetIds: string[], categories: CategoryId[]): Promise<WriteResult>;
   restore(backupId: string, accountId: string): Promise<WriteResult>;
+  guideToolStatus(): Promise<GuideToolStatus>;
+  /** Generate every hero's D2PT guides and install them into the target accounts. */
+  importGuides(targetIds: string[], options: GuideImportOptions): Promise<GuideImportResult>;
+  cancelGuideImport(): Promise<void>;
+  /** Progress of a running import. Returns a function that stops listening. */
+  onGuideProgress(cb: (p: GuideProgress) => void): () => void;
 }
 
 /** Separator for joining key paths into map keys. Never appears in config text. */

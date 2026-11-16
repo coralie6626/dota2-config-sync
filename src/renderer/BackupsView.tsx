@@ -71,7 +71,9 @@ export function BackupsView({ state, onChanged }: Props) {
                 <td>
                   {b.reason === 'push'
                     ? `push from ${names.get(b.sourceAccountId ?? '')?.name ?? b.sourceAccountId ?? '?'}`
-                    : 'restore'}
+                    : b.reason === 'import'
+                      ? 'D2PT guide import'
+                      : 'restore'}
                 </td>
                 <td>{b.categories.map(categoryLabel).join(', ')}</td>
                 <td title={[...b.existed, ...b.created.map((f) => `${f} (created)`)].join('\n')}>

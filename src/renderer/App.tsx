@@ -3,8 +3,9 @@ import type { AppState } from '../shared/types';
 import { api, errorText, formatDate } from './api';
 import { SyncView } from './SyncView';
 import { BackupsView } from './BackupsView';
+import { GuidesView } from './GuidesView';
 
-type Tab = 'sync' | 'backups';
+type Tab = 'sync' | 'guides' | 'backups';
 
 export function App() {
   const [state, setState] = useState<AppState | null>(null);
@@ -44,6 +45,9 @@ export function App() {
           <button className={tab === 'sync' ? 'tab active' : 'tab'} onClick={() => setTab('sync')}>
             Sync
           </button>
+          <button className={tab === 'guides' ? 'tab active' : 'tab'} onClick={() => setTab('guides')}>
+            Guides
+          </button>
           <button className={tab === 'backups' ? 'tab active' : 'tab'} onClick={() => setTab('backups')}>
             Backups{state && state.backups.length > 0 ? ` (${state.backups.length})` : ''}
           </button>
@@ -78,6 +82,12 @@ export function App() {
         )}
         {state && state.accounts.length > 0 && tab === 'sync' && (
           <SyncView state={state} version={version} onChanged={reload} />
+        )}
+        {/* Kept mounted so a running import survives switching tabs. */}
+        {state && state.accounts.length > 0 && (
+          <div hidden={tab !== 'guides'} className="tab-page">
+            <GuidesView state={state} onChanged={reload} />
+          </div>
         )}
         {state && tab === 'backups' && <BackupsView state={state} onChanged={reload} />}
       </main>
