@@ -90,7 +90,7 @@ export class Backups {
         accountId,
         accountName: typeof raw.accountName === 'string' ? raw.accountName : accountId,
         createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : '',
-        reason: raw.reason === 'restore' ? 'restore' : 'push',
+        reason: raw.reason === 'restore' || raw.reason === 'import' ? raw.reason : 'push',
         sourceAccountId: typeof raw.sourceAccountId === 'string' ? raw.sourceAccountId : null,
         categories: strings(raw.categories).filter(isCategoryId) as CategoryId[],
         existed: strings(raw.existed),

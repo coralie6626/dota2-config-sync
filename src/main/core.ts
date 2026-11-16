@@ -16,6 +16,7 @@ import { diffFile, fileState, type FileState } from './diff';
 import { assertRealInside, atomicWrite, isNeverCopied, safeJoin } from './files';
 import { isCategoryId, listCategoryFiles, planCopy, readCategoryState } from './categories';
 import { Backups, BACKUP_ID_RE } from './backups';
+import { d2ptGuideHero, GUIDE_FILE_RE, type GeneratedGuides } from './guides';
 import { discoverAccountIds, findSteamPath, isDotaRunning, readAccountMeta, type AccountMeta } from './steam';
 
 type AccountSnapshot = Partial<Record<CategoryId, Record<string, FileState>>>;
@@ -182,7 +183,7 @@ export class Core {
     files: Map<string, Buffer>,
     deletes: string[],
     backupId: string,
-    info: { reason: 'push' | 'restore'; sourceAccountId: string | null; categories: CategoryId[] },
+    info: { reason: 'push' | 'restore' | 'import'; sourceAccountId: string | null; categories: CategoryId[] },
   ): Promise<AccountResult> {
     const meta = this.accounts.get(accountId)!;
     const root = this.rootOf(steamPath, accountId);
@@ -227,8 +228,7 @@ export class Core {
       const steamPath = await this.refreshAccounts(); // fresh Steam Cloud status
       const src = this.requireAccount(sourceId);
       const cats = this.requireCategories(categories);
-      if (!Array.isArray(targetIds) || targetIds.length === 0) throw new Error('Pick at least one target account');
-      const targets = [...new Set(targetIds.map((t) => this.requireAccount(t)))];
+      const targets = this.requireTargets(targetIds);
       if (targets.includes(src)) throw new Error('The source account cannot also be a target');
 
       if (await this.dotaRunning()) return { ok: false, error: DOTA_RUNNING, results: [] };
@@ -269,6 +269,99 @@ export class Core {
       await this.cleanEmptyBackup(backupId);
       return { ok: results.every((r) => r.ok), results };
     });
+  }
+
+  /**
+   * Check guide-import targets before spending minutes generating guides.
+   * Returns why nothing could be installed, or null.
+   */
+  async checkGuideTargets(targetIds: string[]): Promise<string | null> {
+    return this.exclusive(async () => {
+      await this.refreshAccounts();
+      const targets = this.requireTargets(targetIds);
+      if (await this.dotaRunning()) return DOTA_RUNNING;
+      if (targets.every((t) => this.accounts.get(t)!.cloud === 'on')) return 'Steam Cloud is on for every picked account.';
+      return null;
+    });
+  }
+
+  private requireTargets(targetIds: unknown): string[] {
+    if (!Array.isArray(targetIds) || targetIds.length === 0) throw new Error('Pick at least one target account');
+    return [...new Set(targetIds.map((t) => this.requireAccount(t)))];
+  }
+
+  /**
+   * Write generated D2PT guides into remote/guides of each target, with a backup first.
+   * With `replace`, older D2PT guides for the same heroes are removed; other guides are never touched.
+   */
+  async installGuides(targetIds: string[], guides: GeneratedGuides, replace: boolean): Promise<WriteResult> {
+    return this.exclusive(async () => {
+      const steamPath = await this.refreshAccounts();
+      const targets = this.requireTargets(targetIds);
+      for (const name of guides.files.keys()) if (!GUIDE_FILE_RE.test(name)) throw new Error(`Bad guide file name: ${name}`);
+      if (guides.files.size === 0) return { ok: false, error: 'No guides to install.', results: [] };
+      if (await this.dotaRunning()) return { ok: false, error: DOTA_RUNNING, results: [] };
+
+      const files = new Map([...guides.files].map(([name, buf]) => [`remote/guides/${name}`, buf]));
+      const backupId = await this.backups.newId();
+      const results: AccountResult[] = [];
+      for (const t of targets) {
+        if (this.accounts.get(t)!.cloud === 'on') {
+          results.push({ accountId: t, ok: false, error: 'Steam Cloud is on for this account.', filesWritten: 0 });
+          continue;
+        }
+        if (await this.dotaRunning()) {
+          results.push({ accountId: t, ok: false, error: DOTA_RUNNING, filesWritten: 0 });
+          continue;
+        }
+        try {
+          const root = this.rootOf(steamPath, t);
+          const deletes = replace ? await this.staleGuides(root, guides.heroes, files) : [];
+          const r = await this.writeAccount(steamPath, t, files, deletes, backupId, {
+            reason: 'import',
+            sourceAccountId: null,
+            categories: ['builds'],
+          });
+          results.push({ ...r, filesRemoved: r.ok ? deletes.length : 0 });
+        } catch (e) {
+          results.push({ accountId: t, ok: false, error: (e as Error).message, filesWritten: 0 });
+        }
+      }
+      await this.cleanEmptyBackup(backupId);
+      return { ok: results.every((r) => r.ok), results };
+    });
+  }
+
+  /** D2PT guides already in an account for these heroes that the new set doesn't overwrite. */
+  private async staleGuides(root: string, heroes: Set<string>, incoming: Map<string, Buffer>): Promise<string[]> {
+    const dir = path.join(root, 'remote', 'guides');
+    let names: string[];
+    try {
+      names = await fs.readdir(dir);
+    } catch {
+      return [];
+    }
+    const out: string[] = [];
+    for (const name of names) {
+      const rel = `remote/guides/${name}`;
+      if (!name.endsWith('.build') || incoming.has(rel)) continue;
+      let head: string;
+      try {
+        const fh = await fs.open(path.join(dir, name), 'r');
+        try {
+          const buf = Buffer.alloc(500);
+          const { bytesRead } = await fh.read(buf, 0, 500, 0);
+          head = buf.subarray(0, bytesRead).toString('utf8');
+        } finally {
+          await fh.close();
+        }
+      } catch {
+        continue;
+      }
+      const hero = d2ptGuideHero(head);
+      if (hero && heroes.has(hero)) out.push(rel);
+    }
+    return out.sort();
   }
 
   /** Put an account's files back the way they were before a backed-up write. */

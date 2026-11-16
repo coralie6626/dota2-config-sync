@@ -2,6 +2,8 @@ import { app, BrowserWindow, ipcMain, Menu, session, shell, type IpcMainInvokeEv
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { Core } from './main/core';
+import { generateGuides, GuideTool } from './main/guides';
+import type { GuideImportResult, GuideProgress } from './shared/types';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) app.quit();
@@ -34,11 +36,45 @@ function fromOurPage(e: IpcMainInvokeEvent): boolean {
 }
 
 function handle(channel: string, fn: (...args: unknown[]) => Promise<unknown>) {
+  handleWithSender(channel, (_e, ...args) => fn(...args));
+}
+
+function handleWithSender(channel: string, fn: (e: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>) {
   ipcMain.handle(channel, async (e, ...args) => {
     if (!fromOurPage(e)) throw new Error('Blocked');
-    return fn(...args);
+    return fn(e, ...args);
   });
 }
+
+const guideTool = new GuideTool();
+let guideImport: AbortController | null = null;
+
+/** Generate every hero's guides with d2pt-guides, then install them into the targets. */
+async function importGuides(e: IpcMainInvokeEvent, targetIds: unknown, options: unknown): Promise<GuideImportResult> {
+  if (guideImport) throw new Error('A guide import is already running');
+  const targets = Array.isArray(targetIds) ? targetIds.map(String) : [];
+  const replace = !!(options && typeof options === 'object' && (options as { replace?: unknown }).replace === true);
+  const send = (p: GuideProgress) => {
+    if (!e.sender.isDestroyed()) e.sender.send('guideProgress', p);
+  };
+  const ctrl = new AbortController();
+  guideImport = ctrl;
+  try {
+    const blocked = await core.checkGuideTargets(targets);
+    if (blocked) return { ok: false, error: blocked, results: [], generated: 0, heroes: 0 };
+    const py = await guideTool.command();
+    const guides = await generateGuides(py, { signal: ctrl.signal, onProgress: send });
+    send({ phase: 'installing', done: 0, total: 0, label: '', generated: guides.files.size });
+    const r = await core.installGuides(targets, guides, replace);
+    return { ...r, generated: guides.files.size, heroes: guides.heroes.size };
+  } finally {
+    guideImport = null;
+  }
+}
+
+handle('guideToolStatus', () => guideTool.status());
+handleWithSender('importGuides', importGuides);
+handle('cancelGuideImport', async () => guideImport?.abort());
 
 handle('listAccounts', () => core.listAccounts());
 handle('getDiff', (s, t, c) => core.getDiff(s as string, t as string, c as never));

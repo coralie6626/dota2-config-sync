@@ -23,6 +23,7 @@ to a scratch folder to try pushes safely. The packaged app ignores both.
 - `src/main/categories.ts`: which files each category copies; account-bound convars kept on the target
 - `src/main/kv.ts`, `diff.ts`: text and binary KeyValues parsers, flatten and key-by-key diff
 - `src/main/steam.ts`: Steam path, account discovery, persona names, Steam Cloud status, Dota process check
+- `src/main/guides.ts`: runs the d2pt-guides Python tool and reads the guides it generates
 - `src/main/backups.ts`: zip backups in `%APPDATA%\Dota 2 Config Sync\backups\<timestamp>\<account>\`
 - `src/renderer/`: React UI
 
@@ -35,3 +36,20 @@ to a scratch folder to try pushes safely. The packaged app ignores both.
 - Both `remote/` and `local/cfg/` copies are written. If the source has only one, it fills both.
 - Files only on the target (e.g. extra guides) are left alone.
 - "Changed since last check" compares with the snapshot saved the last time the app read the accounts.
+
+## D2PT guides (Guides tab)
+
+Imports in-game guides for every hero and position from Dota2ProTracker's most played builds,
+using [d2pt-guides](https://github.com/Darktex/d2pt-guides). The tool isn't bundled: install
+Python 3.10+ and then:
+
+```bash
+pip install git+https://github.com/Darktex/d2pt-guides
+```
+
+- The app looks for `py -3` and then `python`, and runs `python -m d2pt_guides --all-heroes` into a temp folder
+  (about 8 minutes for ~400 guides; the tool caches D2PT's answers for 30 minutes).
+- The guides go into `remote/guides/` of each picked account, with the usual backup, Dota check and Steam Cloud check.
+- "Remove older D2PT guides" deletes only guides whose title starts with `D2PT ` for the same heroes. Re-imports
+  overwrite the same file names, so players who follow a guide keep following it.
+- dota2protracker.com blocks most VPN and datacenter IPs (403). Start Dota 2 after an import.
