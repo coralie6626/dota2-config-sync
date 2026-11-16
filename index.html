@@ -9,7 +9,13 @@
     <title>Dota 2 Config Sync</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Shown until React mounts; replaced by the app. -->
+      <div class="boot">
+        <div class="spinner"></div>
+        <div>Starting Dota 2 Config Sync…</div>
+      </div>
+    </div>
     <script type="module" src="/src/renderer/main.tsx"></script>
   </body>
 </html>

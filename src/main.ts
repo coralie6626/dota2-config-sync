@@ -53,7 +53,6 @@ const createWindow = () => {
     minHeight: 600,
     title: 'Dota 2 Config Sync',
     backgroundColor: '#14161a',
-    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -63,7 +62,6 @@ const createWindow = () => {
       spellcheck: false,
     },
   });
-  mainWindow.once('ready-to-show', () => mainWindow?.show());
 
   const wc = mainWindow.webContents;
   // Never navigate away or open new windows; links to the web open in the browser.

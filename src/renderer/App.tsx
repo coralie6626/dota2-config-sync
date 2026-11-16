@@ -65,7 +65,12 @@ export function App() {
       {error && <div className="banner danger">{error}</div>}
 
       <main>
-        {!state && !error && <div className="empty">Reading Steam accounts…</div>}
+        {!state && !error && (
+          <div className="boot">
+            <div className="spinner" />
+            <div>Reading Steam accounts…</div>
+          </div>
+        )}
         {state && state.accounts.length === 0 && (
           <div className="empty">
             No Steam accounts with a Dota 2 folder were found in <code>{state.steamPath}\userdata</code>.
